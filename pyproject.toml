@@ -8,7 +8,7 @@ dependencies = [
     "notebook>=7.6.1",
     "pixell>=0.31.10",
     "ruff>=0.15.21",
-    "smarties @ git+https://github.com/camilledemay/smarties-beam-convolution",
+    "smarties @ git+https://github.com/camilledemay/smarties-beam-convolution.git@perlmutter",
     "toml>=0.10.2",
     "ty>=0.0.63",
 ]
