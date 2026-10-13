@@ -153,15 +153,14 @@ class PlanckDetectorsData:
             pol_ang_rad=self.pol_angles_rad,
             blms_ref=self.ref_frame_beams,
             polarisation_efficiencies=self.rho_blm,
+            single_precision=self.single_precision
         )
         self.blms_dict = blms_dict
 
     def set_h_maps_dict(self, h_maps_dict):
         self.h_maps_dict = h_maps_dict
 
-    def fill_h_maps_dict(self, single_precision: bool | None = None):
-        if single_precision is not None:
-            self.single_precision = single_precision
+    def fill_h_maps_dict(self):
         h_maps_dict, mask_hits = build_Planck_h_maps_dictionnary(
             det_names=self.detector_names,
             horns=self.horns,
@@ -187,17 +186,14 @@ class SkyData:
         HEALPix resolution of the sky maps.
     lmax : int
         Maximum multipole used in harmonic space.
+    single_precision : bool
+        If True (default) the stored alms are complex64, otherwise complex128.
 
-    Notes
-    -----
-    The alms are always stored as complex128. healpy's ``alm2cl`` requires
-    double precision and is commonly called on ``alms_dict`` by user code, so
-    the alms precision is not exposed as a switch.
     """
 
     nside: int
     lmax: int
-
+    single_precision: bool = True
     alms_dict: Any = field(default_factory=dict)
 
     def fill_cmb_alms(
@@ -232,6 +228,7 @@ class SkyData:
             seed_cmb=seed_cmb,
             apply_pixel_window=apply_pixel_window,
             polarized=pol,
+            single_precision=self.single_precision
         )
         self.alms_dict = alms_dict
 
@@ -245,6 +242,36 @@ class SkyData:
         """
         self.alms_dict = alms_dict
 
+    def _almxfl_preserve_dtype(self, window_0, window_1, window_2):
+        """Multiply the stored alms by per-l transfer functions, in place.
+
+        ``hp.sphtfunc.almxfl`` always returns complex128 and does not modify a
+        complex64 input in place, so each result is cast back to the stored alm
+        dtype. This keeps single precision from being silently upcast.
+        """
+        windows = (window_0, window_1, window_2)
+        for key in self.alms_dict:
+            for i, window in enumerate(windows):
+                alms = self.alms_dict[key][i]
+                self.alms_dict[key][i] = hp.sphtfunc.almxfl(
+                    alms, window
+                ).astype(alms.dtype, copy=False)
+
+    def apply_pixwin(self):
+        """Apply the HEALPix pixel window to the stored alms, in place.
+
+        Useful for alms loaded from an external source that were convolved with
+        the pixel window of a different resolution. The alm dtype is preserved.
+        """
+        Twindow, Pwindow = hp.pixwin(self.nside, lmax=self.lmax, pol=True)
+        for key in self.alms_dict:
+            for i, window in ((0, Twindow), (1, Pwindow), (2, Pwindow)):
+                alms = self.alms_dict[key][i]
+                # TODO: drop the .astype at for a better solution at some point
+                self.alms_dict[key][i] = hp.sphtfunc.almxfl(alms, window).astype(
+                    alms.dtype, copy=False
+                )
+
     def deconvolve_circular_gaussian(self, fwhm_arcmim: float):
         """Deconvolve the stored alms with a circular Gaussian beam.
 
@@ -253,13 +280,11 @@ class SkyData:
         fwhm_arcmim : float
             Beam full width at half maximum, in arcminutes.
         """
+
         Bl = hp.sphtfunc.gauss_beam(
             np.deg2rad(fwhm_arcmim / 60), lmax=self.lmax, pol=True
-        )
-        for key in self.alms_dict.keys():
-            hp.sphtfunc.almxfl(self.alms_dict[key][0], 1 / Bl[:, 0], inplace=True)
-            hp.sphtfunc.almxfl(self.alms_dict[key][1], 1 / Bl[:, 1], inplace=True)
-            hp.sphtfunc.almxfl(self.alms_dict[key][2], 1 / Bl[:, 2], inplace=True)
+        ).astype(np.float32 if self.single_precision else np.float64)
+        self._almxfl_preserve_dtype(1 / Bl[:, 0], 1 / Bl[:, 1], 1 / Bl[:, 2])
 
     def convolve_circular_gaussian(self, fwhm_arcmim: float):
         """Convolve the stored alms with a circular Gaussian beam.
@@ -271,11 +296,9 @@ class SkyData:
         """
         Bl = hp.sphtfunc.gauss_beam(
             np.deg2rad(fwhm_arcmim / 60), lmax=self.lmax, pol=True
-        )
-        for key in self.alms_dict.keys():
-            hp.sphtfunc.almxfl(self.alms_dict[key][0], Bl[:, 0], inplace=True)
-            hp.sphtfunc.almxfl(self.alms_dict[key][1], Bl[:, 1], inplace=True)
-            hp.sphtfunc.almxfl(self.alms_dict[key][2], Bl[:, 2], inplace=True)
+        ).astype(np.float32 if self.single_precision else np.float64)
+
+        self._almxfl_preserve_dtype(Bl[:, 0], Bl[:, 1], Bl[:, 2])
 
     def __add__(self, other: "SkyData") -> "SkyData":
         assert self.lmax == other.lmax, (
@@ -284,12 +307,16 @@ class SkyData:
         assert self.nside == other.nside, (
             "The nside of the two SkyData objects do not match"
         )
+        assert self.single_precision == other.single_precision, (
+            "The single_precision of the two SkyData objects do not match"
+        )
         return SkyData(
             nside=self.nside,
             lmax=self.lmax,
+            single_precision=self.single_precision,
             alms_dict={
                 key: self.alms_dict[key] + other.alms_dict[key]
-                for key in self.alms_dict.keys()
+                for key in self.alms_dict
             },
         )
 
@@ -300,12 +327,16 @@ class SkyData:
         assert self.nside == other.nside, (
             "The nside of the two SkyData objects do not match"
         )
+        assert self.single_precision == other.single_precision, (
+            "The single_precision of the two SkyData objects do not match"
+        )
         return SkyData(
             nside=self.nside,
             lmax=self.lmax,
+            single_precision=self.single_precision,
             alms_dict={
                 key: self.alms_dict[key] - other.alms_dict[key]
-                for key in self.alms_dict.keys()
+                for key in self.alms_dict
             },
         )
 

@@ -55,10 +55,9 @@ def _get_myangle(spin_ref, RIMO, det_name):
     return 0
 
 
-def load_hits_planck_1_det(path_to_moments, det_name, detector_set, dtype=np.float64):
+def load_hits_planck_1_det(path_to_moments, det_name, detector_set, dtype=np.int32):
     """Load the Planck hit map of a single detector.
 
-    TODO: remove the dtype = np.float64 when smarties is patched for single precsion
     """
     hitfile, _ = _get_hit_mom_files(path_to_moments, det_name, detector_set)
     return hp.read_map(hitfile, dtype=dtype)
@@ -72,20 +71,20 @@ def load_hmap_planck_1_det_masked(
     myangle,
     hit,
     mask_hits,
-    dtype=np.complex128,
+    single_precision=True,
 ):
     """Load the Planck h-maps of one detector, restricted to the ``mask_hits`` pixels."""
     _, momfile = _get_hit_mom_files(path_to_moments, det_name, detector_set)
 
     t1 = time.time()
-    spins = hp.read_map(momfile, None, dtype=np.float32)
+    spins = hp.read_map(momfile, None, dtype=np.float32 if single_precision else np.float64)
     logger.info(f"Loaded spins in {time.time() - t1:.2f}s")
 
     hit_masked = hit[mask_hits]
     hitted_pixels = hit_masked > 0
-    h_maps = np.zeros((smax + 1, hit_masked.shape[0]), dtype=dtype)
+    h_maps = np.zeros((smax + 1, hit_masked.shape[0]), dtype=np.complex64 if single_precision else np.complex128)
     for s in range(1, smax + 1):
-        buf = np.zeros(hit_masked.shape[0], dtype=dtype)
+        buf = np.zeros(hit_masked.shape[0], dtype=np.complex64 if single_precision else np.complex128)
         buf[hitted_pixels] = (
             spins[2 * s - 2][mask_hits][hitted_pixels]
             + 1j * spins[2 * s - 1][mask_hits][hitted_pixels]
@@ -117,14 +116,14 @@ def build_Planck_h_maps_dictionnary(
     t1 = time.time()
     hits = np.array(
         [
-            load_hits_planck_1_det(moments_dir, det, detector_set, dtype=np.float64)
+            load_hits_planck_1_det(moments_dir, det, detector_set, dtype=np.int32 if single_precision else np.int64)
             for det in det_names
         ]
     )
     logger.info(f"Loaded hits in {time.time() - t1:.2f}s")
     assert np.all(hits >= 0), "hit maps have negative values"
 
-    weights = np.array([detector_weights[horn] for horn in horns], dtype=np.float64)
+    weights = np.array([detector_weights[horn] for horn in horns], dtype=np.float32 if single_precision else np.float64)
     total_hits = np.einsum("d,dp->p", weights, hits)
     mask_hits = total_hits > 0
 
@@ -133,11 +132,10 @@ def build_Planck_h_maps_dictionnary(
     # The spin-0 map is the hit normalisation and smarties asserts it sums to 1
     # to within 1e-14, so it is always kept in double precision. The other spins
     # follow `single_precision`.
-    dtype = np.complex64 if single_precision else np.complex128
     h_n_dict = {
         s: np.zeros(
             (len(det_names), n_masked),
-            dtype=np.complex128 if s == 0 else dtype,
+            dtype=np.complex64 if single_precision else np.complex128,
         )
         for s in list_hn_spins
     }
@@ -149,7 +147,7 @@ def build_Planck_h_maps_dictionnary(
         weighted_masked = (hit * weights[idet])[mask_hits]
         myangle = _get_myangle(spin_ref, RIMO, det)
         h_maps = load_hmap_planck_1_det_masked(
-            moments_dir, det, detector_set, smax, myangle, hit, mask_hits, dtype
+            moments_dir, det, detector_set, smax, myangle, hit, mask_hits, single_precision
         )
         h_n_dict[0][idet] = weighted_masked / total_hits_masked
         for s in list_hn_spins:
@@ -176,10 +174,11 @@ def generate_cmb_alms(
     nside,
     lmax,
     apply_pixel_window=False,
+    single_precision=True,
 ):
     """Generate CMB alms from a Cl"""
     np.random.seed(seed_cmb)
-
+    out_dtype = np.complex64 if single_precision else np.complex128
     cls = hp.read_cl(path_to_cl)
     if apply_pixel_window:
         match cls.shape:
@@ -195,19 +194,11 @@ def generate_cmb_alms(
     if not polarized:
         alms[1] *= 0
         alms[2] *= 0
-    if apply_pixel_window:
-        apply_pixwin(alms, nside, lmax)
-    alms_dict = {}
-    for det in det_names:
-        alms_dict[det] = alms
+
+    alms=alms.astype(out_dtype, copy=False)
+    alms_dict = {det: alms.copy() for det in det_names}
+
     return alms_dict
-
-
-def apply_pixwin(alms, nside, lmax):
-    Twindow, Pwindow = hp.pixwin(nside, lmax=lmax, pol=True)
-    hp.almxfl(alms[0], Twindow, inplace=True)
-    hp.almxfl(alms[1], Pwindow, inplace=True)
-    hp.almxfl(alms[2], Pwindow, inplace=True)
 
 
 # ----------------------------------------------------------------------
@@ -291,6 +282,7 @@ def get_Planck_det_blms(
     pol_ang_rad,
     blms_ref,
     polarisation_efficiencies,
+    single_precision=True
 ):
     blms_dict = {}
     for idet, det in enumerate(det_names):
@@ -305,15 +297,19 @@ def get_Planck_det_blms(
             polang=pol_ang_rad[idet],
             blms_ref=blms_ref,
             poleff=polarisation_efficiency,
+            single_precision=single_precision,
         )
         blms *= 1 / np.sqrt(4 * np.pi)  # renormalize to match smarties convention
-        blms_dict[det] = blms
+        blms_dict[det] = blms.astype(np.complex64 if single_precision else np.complex128, copy=False)
 
     return blms_dict
 
 
-def convert_Planck_blms_to_hp_format(blms, lmax, mmax):
-    blms_output = np.zeros((3, hp.Alm.getsize(lmax, mmax)), dtype=np.complex128)
+def convert_Planck_blms_to_hp_format(blms, lmax, mmax, single_precision=True):
+    blms_output = np.zeros(
+        (3, hp.Alm.getsize(lmax, mmax)),
+        dtype=np.complex64 if single_precision else np.complex128,
+    )
     for l in range(lmax + 1):
         for m in range(min(l, mmax) + 1):
             idx_m = hp.Alm.getidx(lmax, l, m)
@@ -327,7 +323,15 @@ def convert_Planck_blms_to_hp_format(blms, lmax, mmax):
 
 
 def load_Planck_blms_copolar(
-    fitsfile, lmax, mmax, polang=0, blms_ref="Dxx", poleff=1, isbalm=False, renorm=True
+    fitsfile,
+    lmax,
+    mmax,
+    polang=0,
+    blms_ref="Dxx",
+    poleff=1,
+    isbalm=False,
+    renorm=True,
+    single_precision=True,
 ):
     """Load the beam harmonic coefficients from a FITS file and convert them to the healpy format, if they do not contain polarization assumes copolarity."""
     blms_grasp = get_blms_fits(
@@ -339,7 +343,10 @@ def load_Planck_blms_copolar(
         )
 
         blms_grasp_temp = blms_grasp.copy()
-        blms_grasp = np.zeros((3, hp.Alm.getsize(lmax, mmax)), dtype=np.complex128)
+        blms_grasp = np.zeros(
+            (3, hp.Alm.getsize(lmax, mmax)),
+            dtype=np.complex64 if single_precision else np.complex128,
+        )
 
         def get_blm_lm(l: int, m: int):
             # Return b_lm
@@ -372,7 +379,7 @@ def load_Planck_blms_copolar(
     elif blms_grasp.shape[2] == 3:
         logger.info(f"Blms in {fitsfile} contains polarization.")
         blms_grasp = convert_Planck_blms_to_hp_format(
-            blms_grasp, lmax, mmax
+            blms_grasp, lmax, mmax, single_precision=single_precision
         )  # do not apply poleff to already polarized blms
         if blms_ref == "Pxx":
             # rotating the blms so that they are defined in Dxx

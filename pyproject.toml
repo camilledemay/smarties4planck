@@ -3,12 +3,12 @@ name = "smarties4planck"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "notebook>=7.6.1",
     "pixell>=0.31.10",
     "ruff>=0.15.21",
-    "smarties @ git+https://github.com/camilledemay/smarties-beam-convolution.git@perlmutter",
+    "smarties @ git+https://github.com/simonsobs/smarties@main",
     "toml>=0.10.2",
     "ty>=0.0.63",
 ]
