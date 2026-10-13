@@ -56,9 +56,7 @@ class PlanckDetectorsData:
         Optional detector subset selector.
     single_precision : bool, optional
         If True (default) the loaded h_n maps of spins >= 2 are stored as
-        complex64, matching the single-precision NERSC polmoments. The spin-0
-        map always stays complex128 because smarties asserts its normalisation
-        to 1e-14.
+        complex64, matching the single-precision NERSC polmoments.
     """
 
     detector_set: str
@@ -377,6 +375,13 @@ def compute_convolved_planck_map(
     assert list(sky_data.alms_dict.keys()) == detector_data.detector_names, (
         "The alms_dict keys do not match the detector names"
     )
+    if sky_data.single_precision != detector_data.single_precision:
+        logger.warning(
+            "SkyData single_precision=%s and PlanckDetectorsData single_precision=%s "
+            "do not match; arrays will be upcast to double precision.",
+            sky_data.single_precision,
+            detector_data.single_precision,
+        )
     if np.min(detector_data.mask_hits) == 0:
         logger.warning(
             "Some pixels have no hits. The output map will be masked accordingly."
@@ -401,7 +406,11 @@ def compute_convolved_planck_map(
 
 
     empty_sky = transform_array_maps_into_spin_maps(
-        np.zeros((3, spin_syst[0][0].shape[0])), n_stokes_output=3
+        np.zeros(
+            (3, spin_syst[0][0].shape[0]),
+            dtype=np.float32 if sky_data.single_precision else np.float64,
+        ),
+        n_stokes_output=3,
     )
     t_start_mm = time.time()
     output = run_smarties_mapmaking(
@@ -415,6 +424,7 @@ def compute_convolved_planck_map(
         polarized_bolometers=detector_data.is_polarized,
         inverse_mapmaking_matrix=inverse_mapmaking_matrix,
         return_inverse_mapmaking_matrix=return_inverse_mapmaking_matrix,
+        single_precision=sky_data.single_precision,
         condition_number_mask=condition_number_threshold is not None,
         condition_number_threshold=condition_number_threshold,
     )

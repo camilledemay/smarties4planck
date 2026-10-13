@@ -76,19 +76,25 @@ def load_hmap_planck_1_det_masked(
     """Load the Planck h-maps of one detector, restricted to the ``mask_hits`` pixels."""
     _, momfile = _get_hit_mom_files(path_to_moments, det_name, detector_set)
 
+    real_dtype = np.float32 if single_precision else np.float64
+    complex_dtype = np.complex64 if single_precision else np.complex128
+
     t1 = time.time()
-    spins = hp.read_map(momfile, None, dtype=np.float32 if single_precision else np.float64)
+    spins = hp.read_map(momfile, None, dtype=real_dtype)
     logger.info(f"Loaded spins in {time.time() - t1:.2f}s")
 
     hit_masked = hit[mask_hits]
     hitted_pixels = hit_masked > 0
-    h_maps = np.zeros((smax + 1, hit_masked.shape[0]), dtype=np.complex64 if single_precision else np.complex128)
+    # Cast the hit normalisation to the real dtype so the division stays in the
+    # requested precision (complex64 / int32 would otherwise promote to complex128).
+    hit_float = hit_masked[hitted_pixels].astype(real_dtype)
+    h_maps = np.zeros((smax + 1, hit_masked.shape[0]), dtype=complex_dtype)
     for s in range(1, smax + 1):
-        buf = np.zeros(hit_masked.shape[0], dtype=np.complex64 if single_precision else np.complex128)
+        buf = np.zeros(hit_masked.shape[0], dtype=complex_dtype)
         buf[hitted_pixels] = (
             spins[2 * s - 2][mask_hits][hitted_pixels]
             + 1j * spins[2 * s - 1][mask_hits][hitted_pixels]
-        ) / hit_masked[hitted_pixels]
+        ) / hit_float
         if myangle != 0:
             buf *= np.cos(s * myangle) + 1j * np.sin(s * myangle)
         h_maps[s] = buf
@@ -129,9 +135,7 @@ def build_Planck_h_maps_dictionnary(
 
     list_hn_spins = np.arange(0, smax + 1)  # up to smax
     n_masked = int(np.sum(mask_hits))
-    # The spin-0 map is the hit normalisation and smarties asserts it sums to 1
-    # to within 1e-14, so it is always kept in double precision. The other spins
-    # follow `single_precision`.
+
     h_n_dict = {
         s: np.zeros(
             (len(det_names), n_masked),
@@ -214,8 +218,11 @@ def run_smarties_mapmaking(
     polarized_bolometers,
     inverse_mapmaking_matrix,
     return_inverse_mapmaking_matrix,
+    single_precision,
     condition_number_mask,
     condition_number_threshold=10,
+
+
 ):
     """Compute final T, Q, U maps using FrameworkSystematics."""
     compute_polarization = np.sum(polarized_bolometers) >= 2
@@ -251,7 +258,10 @@ def run_smarties_mapmaking(
         final_Q = ((final_spin_maps[-2] + final_spin_maps[2]) / 2).real
         final_U = (1j * (final_spin_maps[-2] - final_spin_maps[2]) / 2).real
 
-    tqu = np.zeros((3 if compute_polarization else 1, mask_hits.size), dtype=float)
+    tqu = np.zeros(
+        (3 if compute_polarization else 1, mask_hits.size),
+        dtype=np.float32 if single_precision else np.float64,
+    )
 
     if condition_number_mask:
         cond_number = np.linalg.cond(inverse_mapmaking_matrix)
@@ -334,6 +344,7 @@ def load_Planck_blms_copolar(
     single_precision=True,
 ):
     """Load the beam harmonic coefficients from a FITS file and convert them to the healpy format, if they do not contain polarization assumes copolarity."""
+    blms_dtype = np.complex64 if single_precision else np.complex128
     blms_grasp = get_blms_fits(
         fitsfile, lmax=lmax, mmax=mmax, isbalm=isbalm, renorm=renorm
     )
@@ -342,10 +353,12 @@ def load_Planck_blms_copolar(
             f"Blms in {fitsfile} do not contain polarization, assuming copolarity."
         )
 
-        blms_grasp_temp = blms_grasp.copy()
+        # Cast once so the whole copolarity computation stays in the requested
+        # precision (get_blms_fits returns complex128).
+        blms_grasp_temp = blms_grasp.astype(blms_dtype)
         blms_grasp = np.zeros(
             (3, hp.Alm.getsize(lmax, mmax)),
-            dtype=np.complex64 if single_precision else np.complex128,
+            dtype=blms_dtype,
         )
 
         def get_blm_lm(l: int, m: int):
@@ -358,8 +371,8 @@ def load_Planck_blms_copolar(
                 mp = -m
                 return ((-1) ** mp) * np.conjugate(blms_grasp_temp[l, mp, 0])
 
-        phase_p2 = np.exp(2j * polang)
-        phase_m2 = np.exp(-2j * polang)
+        phase_p2 = np.exp(2j * polang).astype(blms_dtype)
+        phase_m2 = np.exp(-2j * polang).astype(blms_dtype)
 
         for l in range(lmax + 1):
             for m in range(min(l, mmax) + 1):
