@@ -132,8 +132,9 @@ class PlanckDetectorsData:
                 f"Unknown polarisation efficiency model: {self.mapmaking_polar_efficiency}"
             )
 
-        self.rho_blm = np.array(rho_blm)
-        self.rho_mapmaking = np.array(rho_mapmaking)
+        dtype = np.float32 if self.single_precision else np.float64
+        self.rho_blm = np.array(rho_blm, dtype=dtype)
+        self.rho_mapmaking = np.array(rho_mapmaking, dtype=dtype)
 
     def _set_pol_angles_rad(self):
         pol_angles_rad = get_angles(
@@ -141,7 +142,9 @@ class PlanckDetectorsData:
             shorts=self.detector_names,
             ref="Dxx",  # Smarties want the blms to be defined in the Dxx frame
         )
-        self.pol_angles_rad = pol_angles_rad
+        self.pol_angles_rad = np.asarray(
+            pol_angles_rad, dtype=np.float32 if self.single_precision else np.float64
+        )
 
     def fill_blms_dict(self):
 
