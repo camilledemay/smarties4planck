@@ -2234,8 +2234,8 @@ wheels = [
 
 [[package]]
 name = "smarties"
-version = "0.1.dev150+g8ef45696f"
-source = { git = "https://github.com/simonsobs/smarties?rev=main#8ef45696f7ea1eae04cafa572853a1cfa46ba9fd" }
+version = "0.1.dev151+gf7a40d709"
+source = { git = "https://github.com/simonsobs/smarties?rev=main#f7a40d709b94e5de4c51b070b4e5521639d684e6" }
 dependencies = [
     { name = "ducc0" },
     { name = "h5py" },
