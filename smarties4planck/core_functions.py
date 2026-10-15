@@ -159,6 +159,10 @@ def build_Planck_h_maps_dictionnary(
                 continue
             h_n_dict[s][idet] = h_maps[s] * weighted_masked / total_hits_masked
     del h_maps
+    # add negative spins
+    for s in list_hn_spins:
+        if s != 0:
+            h_n_dict[-s] = np.conj(h_n_dict[s])
 
     assert np.all(h_n_dict[0].imag < 1e-7), "h_n_dict[0] has non-zero imaginary part"
     return Spin_maps.from_dictionary(h_n_dict), mask_hits

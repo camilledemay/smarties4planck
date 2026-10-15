@@ -394,6 +394,7 @@ def compute_convolved_planck_map(
         lmax=sky_data.lmax,
         mmax_beam=detector_data.mmax_beam,
         shape_pixels_output=(hp.nside2npix(sky_data.nside),),
+        single_precision=sky_data.single_precision,
     )
     logger.info(f"Spin maps generated in {time.time() - t_start_spin_maps:.2f} s.")
 
