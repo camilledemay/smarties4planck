@@ -232,7 +232,7 @@ def run_smarties_mapmaking(
         syst = FrameworkSystematics(
             map_shape=(1, mask_hits.size), nstokes=1, lmax=lmax, list_spin_output=[0]
         )
-    out = syst.compute_total_maps_optimized(
+    out = syst.compute_total_maps(
         mask=mask_hits,
         h_n_spin_dict=h_n_spin_dict,
         spin_sky_maps=spin_sky_maps,
@@ -244,7 +244,8 @@ def run_smarties_mapmaking(
         mask_input=False,
         polar_angle=pol_ang_rad,
         polar_efficiency_coeff=pol_efficiency,
-        single_precision=single_precision
+        single_precision=single_precision,
+        optimize_computations=True
     )
     if return_inverse_mapmaking_matrix or condition_number_mask:
         final_spin_maps, inverse_mapmaking_matrix = out
