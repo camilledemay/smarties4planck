@@ -7,7 +7,7 @@ Smarties4Planck is a high-level wrapper around the
 and polmoments (aka h-maps), converts them into the format and conventions used
 by Smarties, and calls Smarties to perform the beam convolution.
 
-The underlying formalism is described in [Demay et al., 2026]() and
+The underlying formalism is described in [Demay et al., 2026](https://arxiv.org/abs/2610.20231) and
 [Morshed et al., in prep.](). For practical usage you can refer to the
 [example notebook](example_notebook.ipynb).
 
