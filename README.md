@@ -35,13 +35,12 @@ Alternatively clone this repository and run
 ```bash
 pip install path\to\repo\dir
 ``` 
->Note: If you install with pip, pin
-Smarties to the commit recorded in uv.lock (under the [[package]] entry
-for smarties, in the source = { git = ... ?rev=<sha> ... } field) rather
-than letting it resolve @main, e.g.
-pip install "smarties @ git+https://github.com/simonsobs/smarties@<sha>".
-This ensures you get the same Smarties version the project was tested against.
-
+> **Note:** `pip` does not read `uv.lock`. If you install with `pip`, pin
+> Smarties to the commit recorded in `uv.lock` (under the `[[package]]` entry
+> for `smarties`, in the `source = { git = ... ?rev=<sha> ... }` field) rather
+> than letting it resolve `@main`, e.g.
+> `pip install --force-reinstall "smarties @ git+https://github.com/simonsobs/smarties@<sha>"`.
+> This ensures you get the same Smarties version the project was tested against
 
 
 This code relies on [ducc0](https://gitlab.mpcdf.mpg.de/mtr/ducc) to compute harmonic transforms. As detailed in ducc0 documentation, for best performance it is recommended to compile it from source.
