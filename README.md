@@ -18,12 +18,14 @@ The code takes the following inputs:
 - `alms`, spherical harmonic coefficients of the input sky.
 - `blms`, Planck beam harmonic coefficients.
 - Planck polmoments.
+- The HFI/LFI RIMOs, which contains the polarization angle and efficiency for each detector.
 
 The polmoments and `blms` are available at NERSC:
 
 - `blms`: `/global/cfs/cdirs/cmb/data/planck2020/npipe/aux/beams`
 - polmoments: `/global/cfs/cdirs/cmb/data/planck2020/npipe/aux/polmoments`
 
+The RIMOs used to test this code are available in `./inputs/RIMOs` or at NERSC under `/global/cfs/cdirs/cmb/data/planck2020/npipe/aux/.` The RIMO is used to rotate the polmoments into the reference frame adopted by Smarties, so it is recommended to use the same RIMO version as the ones in `./inputs/RIMOs` to ensure consistency with the NERSC polmoments.
 ## Installation
 
 To install this package with uv, run
