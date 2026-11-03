@@ -408,7 +408,7 @@ def compute_convolved_planck_map(
 
     empty_sky = transform_array_maps_into_spin_maps(
         np.zeros(
-            (3, spin_syst[0][0].shape[0]),
+            1,
             dtype=np.float32 if sky_data.single_precision else np.float64,
         ),
         n_stokes_output=3,
