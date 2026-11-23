@@ -14,6 +14,5 @@ if not _pkg.handlers:
         logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     )
     _pkg.addHandler(handler)
-
-_pkg.propagate = False
+    _pkg.propagate = False
 _pkg.setLevel(os.environ.get("smarties4planck_LOGLEVEL", "INFO").upper())
